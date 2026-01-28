@@ -1,0 +1,56 @@
+<Window x:Class="EzanVakti.Views.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Ezan Vakti"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    
+    <!-- No context menu - all settings via system tray -->
+    
+    <!-- Exact Windows 11 taskbar clock styling -->
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0" Height="40">
+        
+        <!-- Prayer Name -->
+        <TextBlock x:Name="PrayerNameText"
+                  Text="İMSAK"
+                  FontFamily="Segoe UI"
+                  FontSize="12"
+                  FontWeight="Normal"
+                  Foreground="White"
+                  VerticalAlignment="Center"
+                  Margin="0,0,6,0"
+                  TextOptions.TextFormattingMode="Display"
+                  TextOptions.TextRenderingMode="ClearType"/>
+        
+        <!-- Prayer Time -->
+        <TextBlock x:Name="PrayerTimeText"
+                  Text="05:30"
+                  FontFamily="Segoe UI"
+                  FontSize="12"
+                  FontWeight="Normal"
+                  Foreground="White"
+                  VerticalAlignment="Center"
+                  Margin="0,0,6,0"
+                  TextOptions.TextFormattingMode="Display"
+                  TextOptions.TextRenderingMode="ClearType"/>
+        
+        <!-- Countdown - monospace font to prevent glitching -->
+        <TextBlock x:Name="CountdownText"
+                  FontFamily="Consolas"
+                  FontSize="12"
+                  FontWeight="Normal"
+                  Foreground="White"
+                  VerticalAlignment="Center"
+                  TextOptions.TextFormattingMode="Display"
+                  TextOptions.TextRenderingMode="ClearType">
+            <Run Text="00:00:00"/>
+        </TextBlock>
+        
+    </StackPanel>
+</Window>
