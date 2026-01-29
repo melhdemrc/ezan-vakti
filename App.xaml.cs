@@ -37,6 +37,12 @@ public partial class App : Application
 
         // Load config
         await ConfigService.Instance.LoadAsync();
+        
+        // Auto-detect location on first run
+        if (ConfigService.Instance.IsNewConfig)
+        {
+            await UseWindowsLocation(true);
+        }
 
         // Create overlay
         _overlayWindow = new OverlayWindow();
@@ -147,7 +153,7 @@ public partial class App : Application
         };
         gpsItem.Click += async (s, e) => 
         {
-            await UseWindowsLocation();
+            await UseWindowsLocation(false);
         };
         menu.Items.Add(gpsItem);
         menu.Items.Add(new Separator());
@@ -224,7 +230,7 @@ public partial class App : Application
         }
     }
 
-    private async Task UseWindowsLocation()
+    private async Task UseWindowsLocation(bool silent = false)
     {
         try
         {
@@ -239,36 +245,45 @@ public partial class App : Application
                     
                 await ConfigService.Instance.SaveAsync();
                 
-                MessageBox.Show(
-                    $"Windows konumu alındı:\n\n{location.DisplayWithAccuracy}\n\nNamaz vakitleri bu konuma göre hesaplanacak.", 
-                    "Konum Başarılı", 
-                    MessageBoxButton.OK, 
-                    MessageBoxImage.Information);
+                if (!silent)
+                {
+                    MessageBox.Show(
+                        $"Windows konumu alındı:\n\n{location.DisplayWithAccuracy}\n\nNamaz vakitleri bu konuma göre hesaplanacak.", 
+                        "Konum Başarılı", 
+                        MessageBoxButton.OK, 
+                        MessageBoxImage.Information);
+                }
                 
                 // Force overlay refresh
                 _overlayWindow?.RefreshDisplay();
             }
             else
             {
-                MessageBox.Show(
-                    "Windows konum servisi erişilebilir değil.\n\n" +
-                    "Lütfen:\n" +
-                    "1. Ayarlar → Gizlilik ve güvenlik → Konum\n" +
-                    "2. 'Konum hizmetleri' açık olmalı\n" +
-                    "3. Bu uygulamaya konum izni verin\n\n" +
-                    "Alternatif olarak manuel şehir seçebilirsiniz.", 
-                    "Konum Erişimi Engellendi", 
-                    MessageBoxButton.OK, 
-                    MessageBoxImage.Warning);
+                if (!silent)
+                {
+                    MessageBox.Show(
+                        "Windows konum servisi erişilebilir değil.\n\n" +
+                        "Lütfen:\n" +
+                        "1. Ayarlar → Gizlilik ve güvenlik → Konum\n" +
+                        "2. 'Konum hizmetleri' açık olmalı\n" +
+                        "3. Bu uygulamaya konum izni verin\n\n" +
+                        "Alternatif olarak manuel şehir seçebilirsiniz.", 
+                        "Konum Erişimi Engellendi", 
+                        MessageBoxButton.OK, 
+                        MessageBoxImage.Warning);
+                }
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                $"Konum alınamadı: {ex.Message}\n\nManuel şehir seçin.", 
-                "Hata", 
-                MessageBoxButton.OK, 
-                MessageBoxImage.Error);
+            if (!silent)
+            {
+                MessageBox.Show(
+                    $"Konum alınamadı: {ex.Message}\n\nManuel şehir seçin.", 
+                    "Hata", 
+                    MessageBoxButton.OK, 
+                    MessageBoxImage.Error);
+            }
         }
     }
 

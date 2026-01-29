@@ -268,16 +268,23 @@ public sealed class PrayerService : IDisposable
 
     private string GetCacheFileName(string key)
     {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var cacheDir = Path.Combine(appData, "EzanVakti");
+        if (!Directory.Exists(cacheDir)) Directory.CreateDirectory(cacheDir);
+
         string safeKey = string.Join("_", key.Split(Path.GetInvalidFileNameChars()));
-        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"cache_{safeKey}.json");
+        return Path.Combine(cacheDir, $"cache_{safeKey}.json");
     }
 
     private void CleanupOldCaches()
     {
         try
         {
-            var dir = AppDomain.CurrentDomain.BaseDirectory;
-            var files = Directory.GetFiles(dir, "cache_*.json");
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var cacheDir = Path.Combine(appData, "EzanVakti");
+            if (!Directory.Exists(cacheDir)) return;
+
+            var files = Directory.GetFiles(cacheDir, "cache_*.json");
             foreach (var file in files)
             {
                 if (File.GetLastWriteTime(file) < DateTime.Now.AddDays(-60))
@@ -305,9 +312,13 @@ public sealed class PrayerService : IDisposable
         _currentCacheKey = string.Empty;
         try 
         {
-             var dir = AppDomain.CurrentDomain.BaseDirectory;
-             var files = Directory.GetFiles(dir, "cache_*.json");
-             foreach (var f in files) File.Delete(f);
+             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+             var cacheDir = Path.Combine(appData, "EzanVakti");
+             if (Directory.Exists(cacheDir))
+             {
+                 var files = Directory.GetFiles(cacheDir, "cache_*.json");
+                 foreach (var f in files) File.Delete(f);
+             }
         }
         catch { }
     }

@@ -46,5 +46,4 @@ Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: startu
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}\config.json"
-Type: files; Name: "{app}\cache_*.json"
+Type: filesandordirs; Name: "{userappdata}\EzanVakti"

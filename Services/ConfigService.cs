@@ -17,11 +17,20 @@ public sealed class ConfigService
     private AppConfig _config;
 
     public AppConfig Config => _config;
+    public bool IsNewConfig { get; private set; }
     public event Action? ConfigChanged;
 
     private ConfigService()
     {
-        _configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var configDir = Path.Combine(appData, "EzanVakti");
+        
+        if (!Directory.Exists(configDir))
+        {
+            Directory.CreateDirectory(configDir);
+        }
+
+        _configPath = Path.Combine(configDir, "config.json");
         _jsonOptions = new JsonSerializerOptions { WriteIndented = true };
         _config = new AppConfig();
     }
@@ -34,13 +43,18 @@ public sealed class ConfigService
             {
                 var json = await File.ReadAllTextAsync(_configPath);
                 var config = JsonSerializer.Deserialize<AppConfig>(json, _jsonOptions);
-                if (config != null) _config = config;
+                if (config != null) 
+                {
+                    _config = config;
+                    IsNewConfig = false;
+                    return;
+                }
             }
         }
-        catch
-        {
-            _config = new AppConfig();
-        }
+        catch { }
+        
+        _config = new AppConfig();
+        IsNewConfig = true;
     }
 
     public async Task SaveAsync()
