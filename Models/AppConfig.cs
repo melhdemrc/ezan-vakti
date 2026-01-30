@@ -3,10 +3,23 @@ using System.Text.Json.Serialization;
 namespace EzanVakti.Models;
 
 /// <summary>
+/// Panel position options for taskbar embedding
+/// </summary>
+public enum PanelPosition
+{
+    Left,
+    Center,
+    Right
+}
+
+/// <summary>
 /// Application configuration with coordinate support
 /// </summary>
 public class AppConfig
 {
+    [JsonPropertyName("panelPosition")]
+    public PanelPosition PanelPosition { get; set; } = PanelPosition.Left;
+
     [JsonPropertyName("city")]
     public string City { get; set; } = "İstanbul";
 
