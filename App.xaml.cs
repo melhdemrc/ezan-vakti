@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -13,6 +14,9 @@ namespace EzanVakti;
 
 public partial class App : Application
 {
+    private const string MutexName = "Global\\EzanVakti_SingleInstance_Mutex";
+    private static Mutex? _instanceMutex;
+    
     private TaskbarIcon? _trayIcon;
     private OverlayWindow? _overlayWindow;
     private DispatcherTimer? _memoryTimer;
@@ -22,6 +26,24 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // Single-instance check - must be first
+        _instanceMutex = new Mutex(true, MutexName, out bool isNewInstance);
+        
+        if (!isNewInstance)
+        {
+            // Another instance is already running
+            MessageBox.Show(
+                "Ezan Vakti uygulamasi zaten calisiyor.\n\nLutfen sistem tepsisindeki simgeyi kontrol edin.",
+                "Uygulama Zaten Calisiyor",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            
+            _instanceMutex.Dispose();
+            _instanceMutex = null;
+            Shutdown();
+            return;
+        }
+        
         // 1. Disable GPU usage completely
         RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
         
@@ -190,8 +212,42 @@ public partial class App : Application
         menu.Items.Add(citiesMenu);
         menu.Items.Add(new Separator());
         
+        // Panel Position submenu
+        var positionMenu = new MenuItem { Header = "Panel Konumu" };
+        var currentPosition = config.PanelPosition;
+        
+        var leftItem = new MenuItem 
+        { 
+            Header = "Sol",
+            IsCheckable = true,
+            IsChecked = currentPosition == PanelPosition.Left
+        };
+        leftItem.Click += async (s, e) => await SetPanelPosition(PanelPosition.Left);
+        positionMenu.Items.Add(leftItem);
+        
+        var centerItem = new MenuItem 
+        { 
+            Header = "Orta",
+            IsCheckable = true,
+            IsChecked = currentPosition == PanelPosition.Center
+        };
+        centerItem.Click += async (s, e) => await SetPanelPosition(PanelPosition.Center);
+        positionMenu.Items.Add(centerItem);
+        
+        var rightItem = new MenuItem 
+        { 
+            Header = "Sag",
+            IsCheckable = true,
+            IsChecked = currentPosition == PanelPosition.Right
+        };
+        rightItem.Click += async (s, e) => await SetPanelPosition(PanelPosition.Right);
+        positionMenu.Items.Add(rightItem);
+        
+        menu.Items.Add(positionMenu);
+        menu.Items.Add(new Separator());
+        
         // Exit
-        var exitItem = new MenuItem { Header = "❌ Çıkış" };
+        var exitItem = new MenuItem { Header = "Cikis" };
         exitItem.Click += (s, e) => ExitApp();
         menu.Items.Add(exitItem);
 
@@ -309,6 +365,12 @@ public partial class App : Application
         _overlayWindow?.RefreshDisplay();
     }
 
+    private async Task SetPanelPosition(PanelPosition position)
+    {
+        ConfigService.Instance.Config.PanelPosition = position;
+        await ConfigService.Instance.SaveAsync();
+    }
+
     private void ExitApp()
     {
         _trayIcon?.Dispose();
@@ -318,7 +380,17 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _memoryTimer?.Stop();
         _trayIcon?.Dispose();
+        
+        // Release the single-instance mutex
+        if (_instanceMutex != null)
+        {
+            _instanceMutex.ReleaseMutex();
+            _instanceMutex.Dispose();
+            _instanceMutex = null;
+        }
+        
         base.OnExit(e);
     }
 }

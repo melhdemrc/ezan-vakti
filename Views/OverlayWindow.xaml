@@ -11,42 +11,37 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
     
-    <!-- No context menu - all settings via system tray -->
-    
-    <!-- Exact Windows 11 taskbar clock styling -->
-    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0" Height="40">
+    <!-- Two-line compact layout -->
+    <StackPanel Orientation="Vertical" VerticalAlignment="Center" Margin="4,2" MinWidth="70">
         
-        <!-- Prayer Name -->
-        <TextBlock x:Name="PrayerNameText"
-                  Text="İMSAK"
-                  FontFamily="Segoe UI"
-                  FontSize="12"
-                  FontWeight="Normal"
-                  Foreground="White"
-                  VerticalAlignment="Center"
-                  Margin="0,0,6,0"
-                  TextOptions.TextFormattingMode="Display"
-                  TextOptions.TextRenderingMode="ClearType"/>
+        <!-- Line 1: Prayer Name + Time -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+            <TextBlock x:Name="PrayerNameText"
+                      Text="Yükleniyor..."
+                      FontFamily="Segoe UI"
+                      FontSize="12"
+                      FontWeight="Normal"
+                      Foreground="White"
+                      Margin="0,0,4,0"
+                      TextOptions.TextFormattingMode="Display"
+                      TextOptions.TextRenderingMode="ClearType"/>
+            <TextBlock x:Name="PrayerTimeText"
+                      Text="00:00"
+                      FontFamily="Segoe UI"
+                      FontSize="12"
+                      FontWeight="Normal"
+                      Foreground="White"
+                      TextOptions.TextFormattingMode="Display"
+                      TextOptions.TextRenderingMode="ClearType"/>
+        </StackPanel>
         
-        <!-- Prayer Time -->
-        <TextBlock x:Name="PrayerTimeText"
-                  Text="05:30"
-                  FontFamily="Segoe UI"
-                  FontSize="12"
-                  FontWeight="Normal"
-                  Foreground="White"
-                  VerticalAlignment="Center"
-                  Margin="0,0,6,0"
-                  TextOptions.TextFormattingMode="Display"
-                  TextOptions.TextRenderingMode="ClearType"/>
-        
-        <!-- Countdown - monospace font to prevent glitching -->
+        <!-- Line 2: Countdown -->
         <TextBlock x:Name="CountdownText"
-                  FontFamily="Consolas"
+                  FontFamily="Segoe UI"
                   FontSize="12"
                   FontWeight="Normal"
                   Foreground="White"
-                  VerticalAlignment="Center"
+                  HorizontalAlignment="Center"
                   TextOptions.TextFormattingMode="Display"
                   TextOptions.TextRenderingMode="ClearType">
             <Run Text="00:00:00"/>
