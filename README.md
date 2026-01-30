@@ -22,7 +22,7 @@ Ezan Vakti, Windows 10 ve 11 işletim sistemleri ile tam uyumlu, sistem tepsisi 
 
 ### Teknik Detaylar
 
-- **Platform:** .NET 6.0 (WPF)
+- **Platform:** .NET 8.0 (WPF)
 - **Minimum OS:** Windows 10 (Build 17763)
 - **Kütüphaneler:** Hardcodet.Wpf.NotifyIcon, Windows SDK entegrasyonu.
 - **Yayınlama Biçimi:** Self-contained, single-file executable.
@@ -51,7 +51,7 @@ Ezan Vakti is a utility tool fully compatible with Windows 10 and 11, managed vi
 
 ### Technical Stack
 
-- **Platform:** .NET 6.0 (WPF)
+- **Platform:** .NET 8.0 (WPF)
 - **Minimum OS:** Windows 10 (Build 17763)
 - **Libraries:** Hardcodet.Wpf.NotifyIcon, Windows SDK integration.
 - **Distribution:** Self-contained, single-file executable.
@@ -66,9 +66,9 @@ Ezan Vakti is a utility tool fully compatible with Windows 10 and 11, managed vi
 
 ## Geliştirme / Development
 
-Projeyi yerel ortamda derlemek için Visual Studio 2022 ve .NET 6 SDK gereklidir.
+Projeyi yerel ortamda derlemek için Visual Studio 2022 ve .NET 8 SDK gereklidir.
 
-To build the project locally, Visual Studio 2022 and .NET 6 SDK are required.
+To build the project locally, Visual Studio 2022 and .NET 8 SDK are required.
 
 ```powershell
 # Projeyi derleme / Build project
