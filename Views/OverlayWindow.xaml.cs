@@ -28,7 +28,7 @@ public partial class OverlayWindow : Window
     
     // Timers for animation handling and robustness
     private System.Timers.Timer? _stabilizationTimer;
-    private const int StabilizationInterval = 300; // Check every 300ms after an event
+    private const int StabilizationInterval = 500; // Check every 500ms after an event
     private int _stabilizationChecks = 0;
 
     // Optimization: Track last position to avoid redundant updates
@@ -36,6 +36,10 @@ public partial class OverlayWindow : Window
     private int _lastY = -1;
     private int _lastWidth = -1;
     private int _lastHeight = -1;
+    
+    // Debounce mechanism to prevent flickering
+    private DateTime _lastEmbedCall = DateTime.MinValue;
+    private const int DebounceMs = 50; // Minimum ms between embed calls
 
     #region Win32 API
     [DllImport("user32.dll")]
@@ -154,12 +158,11 @@ public partial class OverlayWindow : Window
 
     private void StabilizationTimer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
     {
-        // Stop checking after a few attempts if stable, but here we use it for
-        // short bursts after a shell event to catch animations.
+        // Stop checking after a few attempts if stable
         _stabilizationChecks++;
-        Dispatcher.Invoke(() => EmbedInTaskbar());
+        Dispatcher.BeginInvoke(() => EmbedInTaskbar());
         
-        if (_stabilizationChecks >= 5) // Stop after 1.5 seconds
+        if (_stabilizationChecks >= 3) // Stop after 1.5 seconds
         {
             _stabilizationTimer?.Stop();
         }
@@ -181,6 +184,12 @@ public partial class OverlayWindow : Window
 
     private void EmbedInTaskbar()
     {
+        // Debounce: skip if called too recently
+        var now = DateTime.Now;
+        if ((now - _lastEmbedCall).TotalMilliseconds < DebounceMs)
+            return;
+        _lastEmbedCall = now;
+        
         try
         {
             // Find taskbar
