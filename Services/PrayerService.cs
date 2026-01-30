@@ -29,6 +29,10 @@ public sealed class PrayerService : IDisposable
 
     public event Action<PrayerTimes>? PrayerTimesUpdated;
 
+    // Rate limiting protection
+    private DateTime _lastApiCall = DateTime.MinValue;
+    private static readonly TimeSpan MinApiInterval = TimeSpan.FromSeconds(2);
+
     private PrayerService()
     {
         _jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -38,7 +42,8 @@ public sealed class PrayerService : IDisposable
     {
         var config = ConfigService.Instance.Config;
         string cityKey = config.City;
-        if (config.Latitude.HasValue && config.Longitude.HasValue && config.LocationName == "Windows Konum")
+        if (config.Latitude.HasValue && config.Longitude.HasValue && 
+            (config.LocationName == "Windows Konum" || config.LocationName == "IP Konum"))
         {
             cityKey = $"gps_{config.Latitude:F2}_{config.Longitude:F2}";
         }
@@ -159,7 +164,11 @@ public sealed class PrayerService : IDisposable
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
             
             string url;
-            if (config.Latitude.HasValue && config.Longitude.HasValue && config.LocationName == "Windows Konum")
+            bool useCoordinates = config.Latitude.HasValue && 
+                                  config.Longitude.HasValue && 
+                                  (config.LocationName == "Windows Konum" || config.LocationName == "IP Konum");
+                                  
+            if (useCoordinates)
             {
                 url = $"{API_BY_COORDS_MONTHLY}?latitude={config.Latitude.Value.ToString(CultureInfo.InvariantCulture)}&longitude={config.Longitude.Value.ToString(CultureInfo.InvariantCulture)}&method={DIYANET_METHOD}&month={date.Month}&year={date.Year}";
             }
@@ -218,13 +227,26 @@ public sealed class PrayerService : IDisposable
 
     private async Task<PrayerTimes?> FetchDailyAsync(AppConfig config, DateTime date)
     {
+        // Rate limiting protection
+        var timeSinceLastCall = DateTime.Now - _lastApiCall;
+        if (timeSinceLastCall < MinApiInterval)
+        {
+            await Task.Delay(MinApiInterval - timeSinceLastCall);
+        }
+        _lastApiCall = DateTime.Now;
+        
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
             string url;
             var dateStr = date.ToString("dd-MM-yyyy");
 
-            if (config.Latitude.HasValue && config.Longitude.HasValue && config.LocationName == "Windows Konum")
+            // Check for GPS or IP-based location
+            bool useCoordinates = config.Latitude.HasValue && 
+                                  config.Longitude.HasValue && 
+                                  (config.LocationName == "Windows Konum" || config.LocationName == "IP Konum");
+
+            if (useCoordinates)
             {
                 var timestamp = ((DateTimeOffset)date).ToUnixTimeSeconds();
                 url = $"{API_BY_COORDS_DAILY}/{timestamp}?latitude={config.Latitude.Value.ToString(CultureInfo.InvariantCulture)}&longitude={config.Longitude.Value.ToString(CultureInfo.InvariantCulture)}&method={DIYANET_METHOD}";
@@ -235,6 +257,14 @@ public sealed class PrayerService : IDisposable
             }
 
             var response = await client.GetAsync(url);
+            
+            // Handle rate limiting silently
+            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                System.Diagnostics.Debug.WriteLine("API rate limit hit (429), will retry later");
+                return null;
+            }
+            
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
@@ -245,9 +275,15 @@ public sealed class PrayerService : IDisposable
                 return CreatePrayerTimes(date, apiResponse.Data.Timings);
             }
         }
+        catch (HttpRequestException ex) when (ex.Message.Contains("429"))
+        {
+            // Rate limited - silently fail, will retry later
+            System.Diagnostics.Debug.WriteLine("API rate limit hit (429), will retry later");
+        }
         catch (Exception ex)
         {
-             MessageBox.Show($"Veri çekme hatası: {ex.Message}", "Bağlantı Hatası", MessageBoxButton.OK, MessageBoxImage.Error);
+            // Only log, don't show MessageBox for every error (prevents spam)
+            System.Diagnostics.Debug.WriteLine($"API error: {ex.Message}");
         }
         return null;
     }

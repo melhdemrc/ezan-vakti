@@ -14,6 +14,13 @@ public partial class OverlayWindow : Window
     private System.Timers.Timer? _updateTimer;
     private NextPrayerInfo? _currentNextPrayer;
     private IntPtr _hwnd;
+    
+    // Prevent infinite loop when loading fails
+    private bool _isLoading = false;
+    private int _retryCount = 0;
+    private DateTime _lastLoadAttempt = DateTime.MinValue;
+    private const int MaxRetries = 3;
+    private const int RetryBackoffSeconds = 60; // Wait 60s after max retries
 
     #region Win32 API
     [DllImport("user32.dll")]
@@ -147,32 +154,83 @@ public partial class OverlayWindow : Window
     
     private async Task LoadPrayerTimesAsync()
     {
+        // Prevent re-entry
+        if (_isLoading) return;
+        _isLoading = true;
+        _lastLoadAttempt = DateTime.Now;
+        
         try
         {
             _currentNextPrayer = await PrayerService.Instance.GetNextPrayerAsync();
-            Dispatcher.Invoke(UpdateUI);
+            
+            if (_currentNextPrayer != null)
+            {
+                // Success - reset retry counter
+                _retryCount = 0;
+                Dispatcher.Invoke(UpdateUI);
+            }
+            else
+            {
+                // Failed to get prayer times
+                _retryCount++;
+                Dispatcher.Invoke(ShowErrorState);
+            }
         }
         catch
         {
-            Dispatcher.Invoke(() =>
-            {
-                PrayerNameText.Text = "HATA";
-                PrayerTimeText.Text = "--:--";
-                var run = CountdownText.Inlines.FirstInline as Run;
-                if (run != null) run.Text = "--:--";
-            });
+            _retryCount++;
+            Dispatcher.Invoke(ShowErrorState);
         }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+    
+    private void ShowErrorState()
+    {
+        PrayerNameText.Text = "HATA";
+        PrayerTimeText.Text = "--:--";
+        var run = CountdownText.Inlines.FirstInline as Run;
+        if (run != null) run.Text = "--:--";
     }
 
     private void UpdateTimer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
     {
-        if (_currentNextPrayer == null) return;
-
+        // Skip if already loading to prevent re-entry
+        if (_isLoading) return;
+        
         var now = DateTime.Now;
+        
+        // Handle case when prayer times failed to load
+        if (_currentNextPrayer == null)
+        {
+            // Implement backoff to prevent infinite loop
+            var secondsSinceLastAttempt = (now - _lastLoadAttempt).TotalSeconds;
+            
+            if (_retryCount >= MaxRetries)
+            {
+                // After max retries, wait longer before trying again
+                if (secondsSinceLastAttempt < RetryBackoffSeconds)
+                    return;
+                // Reset retry count to try again
+                _retryCount = 0;
+            }
+            
+            // Exponential backoff: wait 2^retryCount seconds between attempts
+            var backoffSeconds = Math.Pow(2, _retryCount);
+            if (secondsSinceLastAttempt >= backoffSeconds)
+            {
+                _ = LoadPrayerTimesAsync();
+            }
+            return;
+        }
+
         var remaining = _currentNextPrayer.PrayerTime - now;
 
         if (remaining <= TimeSpan.Zero)
         {
+            // Prayer time passed, load next prayer
             _ = LoadPrayerTimesAsync();
         }
         else

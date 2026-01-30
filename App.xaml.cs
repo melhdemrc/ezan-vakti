@@ -234,22 +234,29 @@ public partial class App : Application
     {
         try
         {
-            var location = await LocationService.GetWindowsLocationAsync();
+            // Try Windows location first, then IP fallback
+            var location = await LocationService.GetLocationAsync();
             
-            if (location != null)
+            if (location != null && location.Status == LocationStatus.Success)
             {
+                var sourceName = location.Source == "IP" ? "IP Konum" : "Windows Konum";
+                
                 ConfigService.Instance.UpdateCoordinates(
                     location.Latitude, 
                     location.Longitude, 
-                    "Windows Konum");
+                    sourceName);
                     
                 await ConfigService.Instance.SaveAsync();
                 
                 if (!silent)
                 {
+                    var sourceInfo = location.Source == "IP" 
+                        ? "(IP adresi uzerinden - yaklasik konum)" 
+                        : location.DisplayWithAccuracy;
+                        
                     MessageBox.Show(
-                        $"Windows konumu alındı:\n\n{location.DisplayWithAccuracy}\n\nNamaz vakitleri bu konuma göre hesaplanacak.", 
-                        "Konum Başarılı", 
+                        $"Konum alindi:\n\n{location.DisplayName}\n{sourceInfo}\n\nNamaz vakitleri bu konuma gore hesaplanacak.", 
+                        "Konum Basarili", 
                         MessageBoxButton.OK, 
                         MessageBoxImage.Information);
                 }
@@ -259,16 +266,21 @@ public partial class App : Application
             }
             else
             {
+                // All location methods failed - prompt for manual city selection
                 if (!silent)
                 {
+                    var statusMessage = location?.Status switch
+                    {
+                        LocationStatus.AccessDenied => "Konum erisimi reddedildi.",
+                        LocationStatus.Timeout => "Konum istegi zaman asimina ugradi.",
+                        _ => "Konum alinamadi."
+                    };
+                    
                     MessageBox.Show(
-                        "Windows konum servisi erişilebilir değil.\n\n" +
-                        "Lütfen:\n" +
-                        "1. Ayarlar → Gizlilik ve güvenlik → Konum\n" +
-                        "2. 'Konum hizmetleri' açık olmalı\n" +
-                        "3. Bu uygulamaya konum izni verin\n\n" +
-                        "Alternatif olarak manuel şehir seçebilirsiniz.", 
-                        "Konum Erişimi Engellendi", 
+                        $"{statusMessage}\n\n" +
+                        "Lutfen sistem tepsisindeki simgeye sag tiklayarak\n" +
+                        "manuel olarak sehir secin.", 
+                        "Konum Bulunamadi", 
                         MessageBoxButton.OK, 
                         MessageBoxImage.Warning);
                 }
@@ -276,10 +288,11 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"Location error: {ex.Message}");
             if (!silent)
             {
                 MessageBox.Show(
-                    $"Konum alınamadı: {ex.Message}\n\nManuel şehir seçin.", 
+                    "Konum alinamadi.\n\nLutfen manuel sehir secin.", 
                     "Hata", 
                     MessageBoxButton.OK, 
                     MessageBoxImage.Error);
