@@ -344,19 +344,9 @@ public sealed class PrayerService : IDisposable
 
     public void ClearCache()
     {
+        // Only clear memory cache, keep files for offline support
         _monthlyCache.Clear();
         _currentCacheKey = string.Empty;
-        try 
-        {
-             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-             var cacheDir = Path.Combine(appData, "EzanVakti");
-             if (Directory.Exists(cacheDir))
-             {
-                 var files = Directory.GetFiles(cacheDir, "cache_*.json");
-                 foreach (var f in files) File.Delete(f);
-             }
-        }
-        catch { }
     }
 
     public void Dispose() { }

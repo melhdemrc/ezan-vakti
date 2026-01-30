@@ -25,7 +25,6 @@ public partial class OverlayWindow : Window
     private DateTime _lastLoadAttempt = DateTime.MinValue;
     private const int MaxRetries = 3;
     private const int RetryBackoffSeconds = 60; // Wait 60s after max retries
-    private int _posUpdateCounter = 0;
     
     // Timers for animation handling and robustness
     private System.Timers.Timer? _stabilizationTimer;
@@ -59,6 +58,9 @@ public partial class OverlayWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll", ExactSpelling = true, CharSet = CharSet.Auto)]
+    private static extern IntPtr GetParent(IntPtr hWnd);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int Left, Top, Right, Bottom; }
@@ -137,11 +139,16 @@ public partial class OverlayWindow : Window
         _updateTimer.AutoReset = true;
         _updateTimer.Start();
 
+        // Monitor system events for faster response
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += (s, args) => EmbedInTaskbar();
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (s, args) => EmbedInTaskbar();
+
         // Stabilization timer for animations
         _stabilizationTimer = new System.Timers.Timer(StabilizationInterval);
         _stabilizationTimer.Elapsed += StabilizationTimer_Elapsed;
         _stabilizationTimer.AutoReset = true;
 
+        _lastLocationKey = GetCurrentLocationKey();
         ConfigService.Instance.ConfigChanged += OnConfigChanged;
     }
 
@@ -160,7 +167,7 @@ public partial class OverlayWindow : Window
 
     private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == _shellMsg)
+        if (msg == _shellMsg || msg == 0x0047) // SHELLHOOK or WM_WINDOWPOSCHANGED
         {
             // Trigger immediate update
             EmbedInTaskbar();
@@ -189,20 +196,30 @@ public partial class OverlayWindow : Window
             int taskbarHeight = taskbarRect.Bottom - taskbarRect.Top;
             int taskbarWidth = taskbarRect.Right - taskbarRect.Left;
 
-            // Set as child window
-            int style = GetWindowLong(_hwnd, GWL_STYLE);
-            SetWindowLong(_hwnd, GWL_STYLE, style | WS_CHILD);
+            // SMART EMBEDDING: Check if already parented correctly
+            // This prevents the flicker caused by repeatedly calling SetParent/SetWindowLong
+            // which was causing the "millisecond refresh" effect the user reported.
+            IntPtr currentParent = GetParent(_hwnd);
+            if (currentParent != taskbarHandle)
+            {
+                // Set as child window
+                int style = GetWindowLong(_hwnd, GWL_STYLE);
+                SetWindowLong(_hwnd, GWL_STYLE, style | WS_CHILD);
 
-            int exStyle = GetWindowLong(_hwnd, GWL_EXSTYLE);
-            SetWindowLong(_hwnd, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+                int exStyle = GetWindowLong(_hwnd, GWL_EXSTYLE);
+                SetWindowLong(_hwnd, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
 
-            // Parent to taskbar
-            SetParent(_hwnd, taskbarHandle);
+                // Parent to taskbar
+                SetParent(_hwnd, taskbarHandle);
+            }
 
             // Position based on current taskbar state
-            Dispatcher.BeginInvoke(() =>
+            // IMPORTANT: Use synchronous Invoke with Render priority for immediate feedback
+            Dispatcher.Invoke(() =>
             {
-                UpdateLayout();
+                // Force layout update to get accurate dimensions
+                if (!IsLoaded) return;
+                
                 int panelWidth = (int)ActualWidth;
                 if (panelWidth <= 0) panelWidth = 160;
                 
@@ -224,7 +241,7 @@ public partial class OverlayWindow : Window
                 int y = (taskbarHeight - height) / 2;
                 if (y < 0) y = 0;
                 
-                // OPTIMIZATION: Only update if position changed
+                // Force update if needed
                 if (x != _lastX || y != _lastY || panelWidth != _lastWidth || height != _lastHeight)
                 {
                     SetWindowPos(_hwnd, IntPtr.Zero, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
@@ -233,7 +250,7 @@ public partial class OverlayWindow : Window
                     _lastWidth = panelWidth;
                     _lastHeight = height;
                 }
-            }, System.Windows.Threading.DispatcherPriority.Send); // Use Send for faster response
+            }, System.Windows.Threading.DispatcherPriority.Render); 
         }
         catch
         {
@@ -256,7 +273,8 @@ public partial class OverlayWindow : Window
 
         // No Padding as requested - snap to edges of safe zones
         // User update: "en soldan hafif bi çok az padding olsun"
-        int padding = 4; // Slight padding (4px)
+        // User update 2: "sağa yapışıkken de aynı şekilde hafif padding ver"
+        int padding = 8; // Increased padding (8px) for better visibility
         
         int x = 0;
         bool found = false;
@@ -276,11 +294,7 @@ public partial class OverlayWindow : Window
 
         if (isLeftAligned)
         {
-             // If Taskbar is Left Aligned, ONLY allow Right side placement
-             // The "Left" side of the taskbar is occupied by the Start Menu and Icons naturally.
-             // Even if there is space, user requested "Strictly Right" behavior for Left alignment?
-             // "eğer sol olarak ayarlıysa sadece sağ tarafa konulsun" -> YES.
-             
+             // Rule: If Left Aligned -> Right Side Placement
              if (seg2Width >= panelWidth) 
              { 
                  x = seg2End - panelWidth; // Snap to Right Edge of Safe Zone 2
@@ -289,51 +303,12 @@ public partial class OverlayWindow : Window
         }
         else // Center Aligned
         {
-            // User: "eğer ortadaysa ya sağ ya sola atanabilsin"
-            // We favor user preference, but adhere to available space.
-            
-            // Priority 1: Try User Preference
-            if (preferredPosition == Models.PanelPosition.Left)
-            {
-                if (seg1Width >= panelWidth)
-                {
-                    x = seg1Start; // Snap to Left Edge of Screen/SafeZone 1
-                    found = true;
-                }
-            }
-            else if (preferredPosition == Models.PanelPosition.Right)
-            {
-                if (seg2Width >= panelWidth)
-                {
-                    x = seg2End - panelWidth; // Snap to Right Edge of SafeZone 2
-                    found = true;
-                }
-            }
-            
-            // Priority 2: Fallback if preferred side is full
-            if (!found)
-            {
-                if (preferredPosition == Models.PanelPosition.Center)
-                {
-                    // For "Center" preference, pick the largest side
-                   if (seg2Width >= panelWidth && seg2Width >= seg1Width)
-                    {
-                        x = seg2End - panelWidth;
-                        found = true;
-                    }
-                    else if (seg1Width >= panelWidth)
-                    {
-                        x = seg1Start;
-                        found = true;
-                    }
-                }
-                else
-                {
-                   // Try the other side
-                   if (seg1Width >= panelWidth && !found) { x = seg1Start; found = true; }
-                   else if (seg2Width >= panelWidth && !found) { x = seg2End - panelWidth; found = true; }
-                }
-            }
+             // Rule: If Center Aligned -> Left Side Placement
+             if (seg1Width >= panelWidth)
+             {
+                 x = seg1Start; // Snap to Left Edge of Screen/SafeZone 1
+                 found = true;
+             }
         }
 
         // Buffer check (Don't overlap Start/Icons/Tray even if "found")
@@ -488,12 +463,28 @@ public partial class OverlayWindow : Window
         ConfigService.Instance.ConfigChanged -= OnConfigChanged;
     }
 
+    private string _lastLocationKey = string.Empty;
+
+    private string GetCurrentLocationKey()
+    {
+        var config = ConfigService.Instance.Config;
+        if (config.Latitude.HasValue && config.Longitude.HasValue && config.LocationName == "Windows Konum")
+            return $"gps_{config.Latitude:F4}_{config.Longitude:F4}";
+        return config.City ?? string.Empty;
+    }
+
     private async void OnConfigChanged()
     {
-        PrayerService.Instance.ClearCache();
-        await LoadPrayerTimesAsync();
+        // Only reload prayer times if location actually changed
+        var currentKey = GetCurrentLocationKey();
+        if (currentKey != _lastLocationKey)
+        {
+            _lastLocationKey = currentKey;
+            PrayerService.Instance.ClearCache();
+            await LoadPrayerTimesAsync();
+        }
         
-        // Reposition the panel when config changes
+        // Reposition the panel when config changes (e.g. alignment change)
         Dispatcher.Invoke(() => EmbedInTaskbar());
         
         // Optimize memory after config reload
@@ -551,15 +542,6 @@ public partial class OverlayWindow : Window
     {
         // Skip if already loading to prevent re-entry
         if (_isLoading) return;
-
-        // Fallback: Periodic background check (every 10 seconds)
-        // This catches cases missed by shell hooks (e.g. subtle layout shifts)
-        _posUpdateCounter++;
-        if (_posUpdateCounter >= 10)
-        {
-            _posUpdateCounter = 0;
-            Dispatcher.Invoke(() => EmbedInTaskbar());
-        }
         
         var now = DateTime.Now;
         

@@ -34,8 +34,8 @@ public partial class App : Application
         {
             // Another instance is already running
             MessageBox.Show(
-                "Ezan Vakti uygulamasi zaten calisiyor.\n\nLutfen sistem tepsisindeki simgeyi kontrol edin.",
-                "Uygulama Zaten Calisiyor",
+                "Ezan Vakti uygulaması zaten çalışıyor.\n\nLütfen sistem tepsisindeki simgeyi kontrol edin.",
+                "Uygulama Zaten Çalışıyor",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             
@@ -98,7 +98,7 @@ public partial class App : Application
         
         try
         {
-            // Try to load custom icon
+            // Try to load custom icon (Standard .ico file)
             var iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "icon.ico");
             
             if (System.IO.File.Exists(iconPath))
@@ -107,7 +107,8 @@ public partial class App : Application
             }
             else
             {
-                // Try embedded resource
+                // Fallback to embedded if file missing (try to load stream as Icon)
+                // Note: System.Drawing.Icon expects an .ico stream
                 var iconUri = new Uri("pack://application:,,,/Assets/icon.ico");
                 var streamInfo = Application.GetResourceStream(iconUri);
                 
@@ -117,7 +118,6 @@ public partial class App : Application
                 }
                 else
                 {
-                    // Fallback to system icon
                     _trayIcon.Icon = System.Drawing.SystemIcons.Application;
                 }
             }
@@ -126,7 +126,10 @@ public partial class App : Application
         {
             // Fallback to system icon on any error
             System.Diagnostics.Debug.WriteLine($"Icon error: {ex.Message}");
-            _trayIcon.Icon = System.Drawing.SystemIcons.Application;
+            try 
+            {
+                _trayIcon.Icon = System.Drawing.SystemIcons.Application; 
+            } catch { }
         }
         
         _trayIcon.ToolTipText = "Ezan Vakti - Namaz Vakitleri";
@@ -213,42 +216,8 @@ public partial class App : Application
         menu.Items.Add(citiesMenu);
         menu.Items.Add(new Separator());
         
-        // Panel Position submenu
-        var positionMenu = new MenuItem { Header = "Panel Konumu" };
-        var currentPosition = config.PanelPosition;
-        
-        var leftItem = new MenuItem 
-        { 
-            Header = "Sol",
-            IsCheckable = true,
-            IsChecked = currentPosition == PanelPosition.Left
-        };
-        leftItem.Click += async (s, e) => await SetPanelPosition(PanelPosition.Left);
-        positionMenu.Items.Add(leftItem);
-        
-        var centerItem = new MenuItem 
-        { 
-            Header = "Orta",
-            IsCheckable = true,
-            IsChecked = currentPosition == PanelPosition.Center
-        };
-        centerItem.Click += async (s, e) => await SetPanelPosition(PanelPosition.Center);
-        positionMenu.Items.Add(centerItem);
-        
-        var rightItem = new MenuItem 
-        { 
-            Header = "Sag",
-            IsCheckable = true,
-            IsChecked = currentPosition == PanelPosition.Right
-        };
-        rightItem.Click += async (s, e) => await SetPanelPosition(PanelPosition.Right);
-        positionMenu.Items.Add(rightItem);
-        
-        menu.Items.Add(positionMenu);
-        menu.Items.Add(new Separator());
-        
         // Exit
-        var exitItem = new MenuItem { Header = "Cikis" };
+        var exitItem = new MenuItem { Header = "Çıkış" };
         exitItem.Click += (s, e) => ExitApp();
         menu.Items.Add(exitItem);
 
