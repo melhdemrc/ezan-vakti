@@ -40,6 +40,11 @@ public partial class OverlayWindow : Window
     // Debounce mechanism to prevent flickering
     private DateTime _lastEmbedCall = DateTime.MinValue;
     private const int DebounceMs = 50; // Minimum ms between embed calls
+    
+    // Store references for proper cleanup during shutdown
+    private HwndSource? _hwndSource;
+    private HwndSourceHook? _shellHook;
+    private HwndSourceHook? _settingsHook;
 
     #region Win32 API
     [DllImport("user32.dll")]
@@ -120,16 +125,12 @@ public partial class OverlayWindow : Window
         // Register for shell messages to detect taskbar changes
         _shellMsg = RegisterWindowMessage("SHELLHOOK");
         RegisterShellHookWindow(_hwnd);
-        HwndSource.FromHwnd(_hwnd).AddHook(HwndHook);
-
-        // Also listen for general system changes (like resolution or taskbar settings)
-        HwndSource.FromHwnd(_hwnd).AddHook((IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) => {
-            if (msg == 0x001A || msg == 0x007E) // WM_SETTINGCHANGE or WM_DISPLAYCHANGE
-            {
-                EmbedInTaskbar();
-            }
-            return IntPtr.Zero;
-        });
+        
+        _hwndSource = HwndSource.FromHwnd(_hwnd);
+        _shellHook = HwndHook;
+        _settingsHook = SettingsHook;
+        _hwndSource?.AddHook(_shellHook);
+        _hwndSource?.AddHook(_settingsHook);
 
         // Embed into taskbar
         EmbedInTaskbar();
@@ -144,8 +145,8 @@ public partial class OverlayWindow : Window
         _updateTimer.Start();
 
         // Monitor system events for faster response
-        Microsoft.Win32.SystemEvents.UserPreferenceChanged += (s, args) => EmbedInTaskbar();
-        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (s, args) => EmbedInTaskbar();
+        SystemEvents.UserPreferenceChanged += SystemEvents_UserPreferenceChanged;
+        SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
 
         // Stabilization timer for animations
         _stabilizationTimer = new System.Timers.Timer(StabilizationInterval);
@@ -154,6 +155,25 @@ public partial class OverlayWindow : Window
 
         _lastLocationKey = GetCurrentLocationKey();
         ConfigService.Instance.ConfigChanged += OnConfigChanged;
+    }
+    
+    private IntPtr SettingsHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == 0x001A || msg == 0x007E) // WM_SETTINGCHANGE or WM_DISPLAYCHANGE
+        {
+            EmbedInTaskbar();
+        }
+        return IntPtr.Zero;
+    }
+    
+    private void SystemEvents_UserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        EmbedInTaskbar();
+    }
+    
+    private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        EmbedInTaskbar();
     }
 
     private void StabilizationTimer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
@@ -465,11 +485,37 @@ public partial class OverlayWindow : Window
 
     private void OverlayWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        _updateTimer?.Stop();
-        _updateTimer?.Dispose();
-        _stabilizationTimer?.Stop();
-        _stabilizationTimer?.Dispose();
-        ConfigService.Instance.ConfigChanged -= OnConfigChanged;
+        try
+        {
+            // Stop timers first
+            _updateTimer?.Stop();
+            _updateTimer?.Dispose();
+            _updateTimer = null;
+            
+            _stabilizationTimer?.Stop();
+            _stabilizationTimer?.Dispose();
+            _stabilizationTimer = null;
+            
+            // Unsubscribe from config changes
+            ConfigService.Instance.ConfigChanged -= OnConfigChanged;
+            
+            // Remove HwndSource hooks
+            if (_hwndSource != null)
+            {
+                if (_shellHook != null)
+                    _hwndSource.RemoveHook(_shellHook);
+                if (_settingsHook != null)
+                    _hwndSource.RemoveHook(_settingsHook);
+            }
+            
+            // Unsubscribe from SystemEvents (critical for clean shutdown)
+            SystemEvents.UserPreferenceChanged -= SystemEvents_UserPreferenceChanged;
+            SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
+        }
+        catch
+        {
+            // Ignore errors during shutdown - the process is ending anyway
+        }
     }
 
     private string _lastLocationKey = string.Empty;
@@ -616,7 +662,7 @@ public partial class OverlayWindow : Window
     {
         if (_currentNextPrayer == null) return;
 
-        PrayerNameText.Text = _currentNextPrayer.PrayerName.ToUpperInvariant();
+        PrayerNameText.Text = _currentNextPrayer.PrayerName.ToUpper(new System.Globalization.CultureInfo("tr-TR"));
         PrayerTimeText.Text = _currentNextPrayer.PrayerTime.ToString("HH:mm");
         
         var run = CountdownText.Inlines.FirstInline as Run;
