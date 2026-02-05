@@ -52,12 +52,12 @@ public static class PrayerTypeExtensions
     {
         return prayer switch
         {
-            PrayerType.Fajr => "İmsak",
-            PrayerType.Sunrise => "Güneş",
-            PrayerType.Dhuhr => "Öğle",
-            PrayerType.Asr => "İkindi",
-            PrayerType.Maghrib => "Akşam",
-            PrayerType.Isha => "Yatsı",
+            PrayerType.Fajr => "İMSAK",
+            PrayerType.Sunrise => "GÜNEŞ",
+            PrayerType.Dhuhr => "ÖĞLE",
+            PrayerType.Asr => "İKİNDİ",
+            PrayerType.Maghrib => "AKŞAM",
+            PrayerType.Isha => "YATSI",
             _ => prayer.ToString()
         };
     }
