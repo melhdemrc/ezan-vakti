@@ -1,9 +1,9 @@
 [Setup]
 AppName=Ezan Vakti
-AppVersion=1.0.0
+AppVersion=1.1.0
 DefaultDirName={autopf}\EzanVakti
 DefaultGroupName=EzanVakti
-OutputBaseFilename=EzanVakti_Setup
+OutputBaseFilename=EzanVakti_Setup_v1.1.0
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin

@@ -9,7 +9,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>EzanVakti</AssemblyName>
     <RootNamespace>EzanVakti</RootNamespace>
-    <Version>1.0.2</Version>
+    <Version>1.1.0</Version>
     <Authors>EzanVakti</Authors>
     <Description>Lightweight Prayer Times Overlay for Windows 11</Description>
     

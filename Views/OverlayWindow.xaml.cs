@@ -1,13 +1,11 @@
 using System;
-
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
-
-
 using System.Windows.Interop;
+using System.Windows.Media.Animation;
 using EzanVakti.Models;
 using EzanVakti.Services;
 
@@ -18,6 +16,15 @@ public partial class OverlayWindow : Window
     private System.Timers.Timer? _updateTimer;
     private NextPrayerInfo? _currentNextPrayer;
     private IntPtr _hwnd;
+    
+    // Ramazan: Mod döngüsü — 0=Normal, 1=İftar, 2=Sahur
+    private int _displayMode = 0;
+    private DateTime? _todayMaghrib = null;
+    private DateTime? _tomorrowFajr = null;
+
+    // Animasyon: 30dk uyarı pulse
+    private bool _alertAnimationActive = false;
+    private DoubleAnimation? _pulseAnimation;
     
     // Prevent infinite loop when loading fails
     private bool _isLoading = false;
@@ -557,6 +564,18 @@ public partial class OverlayWindow : Window
         {
             _currentNextPrayer = await PrayerService.Instance.GetNextPrayerAsync();
             
+            // Bugünün Akşam (Maghrib) ve yarınki Fajr vaktini sakla
+            var todayTimes = await PrayerService.Instance.GetTodayPrayerTimesAsync();
+            if (todayTimes != null)
+            {
+                _todayMaghrib = DateTime.Today.Add(todayTimes.Maghrib.ToTimeSpan());
+            }
+            var tomorrowTimes = await PrayerService.Instance.GetPrayerTimesAsync(DateTime.Today.AddDays(1));
+            if (tomorrowTimes != null)
+            {
+                _tomorrowFajr = DateTime.Today.AddDays(1).Add(tomorrowTimes.Fajr.ToTimeSpan());
+            }
+            
             if (_currentNextPrayer != null)
             {
                 // Success - reset retry counter
@@ -591,6 +610,13 @@ public partial class OverlayWindow : Window
         PrayerTimeText.Text = "--:--";
         var run = CountdownText.Inlines.FirstInline as Run;
         if (run != null) run.Text = "--:--";
+    }
+
+    private void Panel_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        // Döngü: Normal(0) → İftar(1) → Sahur(2) → Normal(0)
+        _displayMode = (_displayMode + 1) % 3;
+        Dispatcher.Invoke(UpdateUI);
     }
 
     private void UpdateTimer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
@@ -638,17 +664,139 @@ public partial class OverlayWindow : Window
                 Dispatcher.Invoke(() =>
                 {
                     _currentNextPrayer.TimeRemaining = remaining;
-                    var newText = FormatCountdown(remaining);
                     
-                    var run = CountdownText.Inlines.FirstInline as Run;
-                    if (run != null && run.Text != newText)
+                    if (_displayMode == 1)
                     {
-                        run.Text = newText;
+                        UpdateIftarUI(now);
+                    }
+                    else if (_displayMode == 2)
+                    {
+                        UpdateSahurUI(now);
+                    }
+                    else
+                    {
+                        var newText = FormatCountdown(remaining);
+                        var run = CountdownText.Inlines.FirstInline as Run;
+                        if (run != null && run.Text != newText)
+                        {
+                            run.Text = newText;
+                        }
+                        // Normal modda da 30dk uyarısını kontrol et (Fajr veya Maghrib'e yakınsa)
+                        CheckAndUpdateAlertAnimation(now);
                     }
                 });
             }
             catch { /* Ignore if window is closing */ }
         }
+    }
+
+    private void UpdateIftarUI(DateTime now)
+    {
+        if (_todayMaghrib == null) return;
+        
+        var iftarRemaining = _todayMaghrib.Value - now;
+        
+        if (iftarRemaining <= TimeSpan.Zero)
+        {
+            // İftar geçti — sahur moduna geç
+            _displayMode = 2;
+            UpdateSahurUI(now);
+            return;
+        }
+        
+        PrayerNameText.Text = "İFTAR";
+        PrayerNameText.Margin = new Thickness(0);
+        PrayerTimeText.Text = "";
+        var run = CountdownText.Inlines.FirstInline as Run;
+        var newText = FormatCountdownFull(iftarRemaining);
+        if (run != null && run.Text != newText)
+            run.Text = newText;
+        
+        // 30dk uyarı animasyonu
+        bool shouldAlert = iftarRemaining.TotalMinutes <= 30;
+        UpdateAlertAnimation(shouldAlert);
+    }
+
+    private void UpdateSahurUI(DateTime now)
+    {
+        if (_tomorrowFajr == null) return;
+        
+        var sahurRemaining = _tomorrowFajr.Value - now;
+        
+        PrayerNameText.Text = "SAHUR";
+        PrayerNameText.Margin = new Thickness(0);
+        PrayerTimeText.Text = "";
+        var run = CountdownText.Inlines.FirstInline as Run;
+        
+        if (sahurRemaining <= TimeSpan.Zero)
+        {
+            // Sahur geçti — normal moda dön
+            _displayMode = 0;
+            StopAlertAnimation();
+            return;
+        }
+        
+        var newText = FormatCountdownFull(sahurRemaining);
+        if (run != null && run.Text != newText)
+            run.Text = newText;
+        
+        // 30dk uyarı animasyonu
+        bool shouldAlert = sahurRemaining.TotalMinutes <= 30;
+        UpdateAlertAnimation(shouldAlert);
+    }
+
+    // Normal modda iftar/sahura yakınlık kontrolü
+    private void CheckAndUpdateAlertAnimation(DateTime now)
+    {
+        bool shouldAlert = false;
+        if (_todayMaghrib.HasValue)
+        {
+            var toIftar = _todayMaghrib.Value - now;
+            if (toIftar.TotalMinutes > 0 && toIftar.TotalMinutes <= 30)
+                shouldAlert = true;
+        }
+        if (!shouldAlert && _tomorrowFajr.HasValue)
+        {
+            var toSahur = _tomorrowFajr.Value - now;
+            if (toSahur.TotalMinutes > 0 && toSahur.TotalMinutes <= 30)
+                shouldAlert = true;
+        }
+        UpdateAlertAnimation(shouldAlert);
+    }
+
+    private void UpdateAlertAnimation(bool shouldAlert)
+    {
+        if (shouldAlert == _alertAnimationActive) return; // Değişim yoksa dokunma
+        _alertAnimationActive = shouldAlert;
+        
+        if (shouldAlert)
+            StartPulseAnimation();
+        else
+            StopAlertAnimation();
+    }
+
+    private void StartPulseAnimation()
+    {
+        // Opacity pulse: 1.0 → 0.3 → 1.0, 1.5s döngü, sonsuz
+        // RepeatBehavior=Forever ama AutoReverse=true → smooth
+        _pulseAnimation = new DoubleAnimation
+        {
+            From = 1.0,
+            To = 0.35,
+            Duration = new Duration(TimeSpan.FromMilliseconds(750)),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+        };
+        RootPanel.BeginAnimation(UIElement.OpacityProperty, _pulseAnimation);
+    }
+
+    private void StopAlertAnimation()
+    {
+        // null geçince animasyon durur ve opacity sıfırlanır — FillBehavior=Stop ile temiz
+        RootPanel.BeginAnimation(UIElement.OpacityProperty, null);
+        RootPanel.Opacity = 1.0;
+        _pulseAnimation = null;
     }
 
     private static string FormatCountdown(TimeSpan ts)
@@ -658,17 +806,38 @@ public partial class OverlayWindow : Window
         return $"{ts.Minutes:D2}:{ts.Seconds:D2}";
     }
 
+    // İftar geri sayımı için her zaman HH:mm:ss formatı
+    private static string FormatCountdownFull(TimeSpan ts)
+    {
+        return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
+    }
+
     private void UpdateUI()
     {
         if (_currentNextPrayer == null) return;
 
-        PrayerNameText.Text = _currentNextPrayer.PrayerName.ToUpper(new System.Globalization.CultureInfo("tr-TR"));
-        PrayerTimeText.Text = _currentNextPrayer.PrayerTime.ToString("HH:mm");
+        var now = DateTime.Now;
         
-        var run = CountdownText.Inlines.FirstInline as Run;
-        if (run != null)
+        if (_displayMode == 1)
         {
-            run.Text = FormatCountdown(_currentNextPrayer.TimeRemaining);
+            UpdateIftarUI(now);
+        }
+        else if (_displayMode == 2)
+        {
+            UpdateSahurUI(now);
+        }
+        else
+        {
+            PrayerNameText.Text = _currentNextPrayer.PrayerName.ToUpper(new System.Globalization.CultureInfo("tr-TR"));
+            PrayerNameText.Margin = new Thickness(0, 0, 4, 0);
+            PrayerTimeText.Text = _currentNextPrayer.PrayerTime.ToString("HH:mm");
+            
+            var run = CountdownText.Inlines.FirstInline as Run;
+            if (run != null)
+            {
+                run.Text = FormatCountdown(_currentNextPrayer.TimeRemaining);
+            }
+            CheckAndUpdateAlertAnimation(now);
         }
         
         // Recalculate position after content changes to avoid gap

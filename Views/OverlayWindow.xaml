@@ -11,8 +11,11 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
     
-    <!-- Two-line compact layout -->
-    <StackPanel Orientation="Vertical" VerticalAlignment="Center" Margin="4,2" MinWidth="70">
+    <!-- Two-line compact layout. Background="#01000000" = neredeyse şeffaf ama hit-test'e giriyor -->
+    <StackPanel x:Name="RootPanel"
+                Orientation="Vertical" VerticalAlignment="Center" Margin="4,2" MinWidth="70"
+                Background="#01000000"
+                MouseLeftButtonUp="Panel_MouseLeftButtonUp" Cursor="Hand">
         
         <!-- Line 1: Prayer Name + Time -->
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
